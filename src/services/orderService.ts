@@ -47,7 +47,7 @@ export const createOrder = async (orderData: Omit<Order, 'id' | 'createdAt' | 'u
     
     // Send webhook to Make.com for order creation
     try {
-      await fetch('https://hook.eu2.make.com/cpw4ynt56urvf97eb2l9ap1rsm67hef2', {
+      await fetch('https://hook.eu2.make.com/v5xjz6qi9ltm225himstcxn0jssqivu7', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -79,7 +79,7 @@ export const updateOrderStatus = async (reference: string, status: Order['status
 
     // Send webhook to Make.com for status update
     try {
-      await fetch('https://hook.eu2.make.com/cpw4ynt56urvf97eb2l9ap1rsm67hef2', {
+      await fetch('https://hook.eu2.make.com/v5xjz6qi9ltm225himstcxn0jssqivu7', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
