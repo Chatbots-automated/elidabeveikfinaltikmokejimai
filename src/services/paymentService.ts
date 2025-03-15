@@ -4,19 +4,12 @@ interface TransactionRequest {
   amount: number;
   reference: string;
   email: string;
-  returnUrl: string;
-  cancelUrl: string;
-  notificationUrl: string;
   orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>;
 }
 
 interface TransactionResponse {
   id: string;
   status: 'pending' | 'completed' | 'failed';
-  _links: {
-    Pay?: { href: string };
-    self?: { href: string };
-  };
   payment_methods?: {
     other?: Array<{ name: string; url: string }>;
   };
@@ -28,21 +21,23 @@ export const createTransaction = async ({
   amount,
   reference,
   email,
-  returnUrl,
-  cancelUrl,
-  notificationUrl,
   orderData
 }: TransactionRequest): Promise<string> => {
   try {
-    // Get user's IP address
+    // ✅ Use correct production URLs with methods
+    const returnUrl = { url: `https://elida.lt/payment-success?reference=${reference}&amount=${amount}&email=${email}`, method: "GET" };
+    const cancelUrl = { url: `https://elida.lt/payment-failed`, method: "GET" };
+    const notificationUrl = { url: `https://hook.eu2.make.com/v5xjz6qi9ltm225himstcxn0jssqivu7`, method: "POST" };
+
+    // ✅ Get user's IP address
     const ipResponse = await fetch('https://api64.ipify.org?format=json');
     const { ip } = await ipResponse.json();
 
-    // Encode credentials
+    // ✅ Encode credentials
     const credentials = `${import.meta.env.VITE_MAKECOMMERCE_STORE_ID}:${import.meta.env.VITE_MAKECOMMERCE_SECRET_KEY}`;
     const encodedCredentials = btoa(credentials);
 
-    // Prepare request data with null checks and defaults
+    // ✅ Prepare request data (ONLY include address if shipping)
     const requestData = {
       transaction: {
         amount: amount.toFixed(2),
@@ -63,12 +58,14 @@ export const createTransaction = async ({
         ip,
         name: orderData?.shipping?.name || '',
         phone: orderData?.shipping?.phone || '',
-        address: {
-          street: orderData?.shipping?.method === 'shipping' ? orderData?.shipping?.address || '' : '',
-          city: orderData?.shipping?.method === 'shipping' ? orderData?.shipping?.city || '' : '',
-          postal_code: orderData?.shipping?.method === 'shipping' ? orderData?.shipping?.postalCode || '' : '',
-          country: 'LT'
-        }
+        address: orderData?.shipping?.method === 'shipping'
+          ? {
+              street: orderData?.shipping?.address || 'Not provided',
+              city: orderData?.shipping?.city || 'Not provided',
+              postal_code: orderData?.shipping?.postalCode || 'Not provided',
+              country: 'LT'
+            }
+          : undefined
       },
       order: {
         reference,
@@ -87,12 +84,10 @@ export const createTransaction = async ({
       }
     };
 
-    // Log request data in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 Payment Request Data:', JSON.stringify(requestData, null, 2));
-    }
+    // ✅ Log request data
+    console.log('🔄 Sending Payment Request:', JSON.stringify(requestData, null, 2));
 
-    // Make API request
+    // ✅ Make API request
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
@@ -102,7 +97,7 @@ export const createTransaction = async ({
       body: JSON.stringify(requestData)
     });
 
-    // Handle non-OK responses
+    // ✅ Handle errors
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('🚨 Payment API Error:', {
@@ -116,38 +111,22 @@ export const createTransaction = async ({
 
     const data: TransactionResponse = await response.json();
 
-    // Log successful response in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ Payment Response:', JSON.stringify(data, null, 2));
-    }
+    // ✅ Log successful response
+    console.log('✅ Payment Response:', JSON.stringify(data, null, 2));
 
-    // Extract payment URL
-    if (data.payment_methods?.other?.length) {
-      const paymentUrl = data.payment_methods.other.find(method => method.name === "redirect")?.url;
-      if (paymentUrl) {
-        return paymentUrl;
-      }
-    }
+    // ✅ Extract payment URL
+    const paymentUrl = data.payment_methods?.other?.find(method => method.name === "redirect")?.url;
+    if (!paymentUrl) throw new Error("Payment URL missing in response.");
 
-    throw new Error("Payment URL missing in response");
+    return paymentUrl;
   } catch (error) {
-    // Enhanced error logging
     console.error('❌ Payment Transaction Error:', {
       error,
-      request: {
-        amount,
-        reference,
-        email,
-        returnUrl,
-        cancelUrl,
-        notificationUrl,
-        orderData
-      }
+      request: { amount, reference, email, orderData }
     });
-    
-    // Rethrow with more descriptive message
+
     throw new Error(
-      error instanceof Error 
+      error instanceof Error
         ? `Payment transaction failed: ${error.message}`
         : 'Payment transaction failed'
     );
@@ -185,8 +164,9 @@ export const verifyPayment = async (transactionId: string): Promise<boolean> => 
       error,
       transactionId
     });
+
     throw new Error(
-      error instanceof Error 
+      error instanceof Error
         ? `Payment verification failed: ${error.message}`
         : 'Payment verification failed'
     );
